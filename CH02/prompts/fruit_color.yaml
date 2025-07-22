@@ -1,0 +1,4 @@
+_type: prompt
+input_variabels:
+  - fruit
+template: "{fruit}의 색깔은 무엇인가요?"
