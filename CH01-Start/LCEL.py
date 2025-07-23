@@ -1,13 +1,11 @@
 import os
 from dotenv import load_dotenv
-from langchain_teddynote import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 load_dotenv()
-
-logging.langsmith("CH01-Basic")
+os.environ["LANGCHAIN_PROJECT"] = "CH01-Basic"
 
 # 랭체인에서 제공하는 LLM Wrapper 클래스
 llm = ChatGoogleGenerativeAI(

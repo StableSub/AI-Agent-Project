@@ -1,10 +1,8 @@
 import os
 from dotenv import load_dotenv
-from langchain_teddynote import logging
 import google.generativeai as genai
 
 load_dotenv()
-logging.langsmith("CH01-Basic")
 
 genai.configure(api_key = os.environ["GOOGLE_API_KEY"])
 

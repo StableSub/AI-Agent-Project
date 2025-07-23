@@ -2,12 +2,10 @@ import os
 import click
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_teddynote import logging
 from langchain_core.prompts import PromptTemplate
 
 load_dotenv()
-
-logging.langsmith("CH01-Basic")
+os.environ["LANGCHAIN_PROJECT"] = "CH01-Basic"
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash", 

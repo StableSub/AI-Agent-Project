@@ -6,7 +6,7 @@ from langchain_teddynote import logging
 from langchain_core.prompts import PromptTemplate
 
 load_dotenv()
-logging.langsmith("CH02-Prompt")
+os.environ["LANGCHAIN_PROJECT"] = "CH02-Prompt"
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",

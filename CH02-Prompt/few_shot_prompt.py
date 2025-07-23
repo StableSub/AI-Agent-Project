@@ -8,7 +8,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 load_dotenv()
-logging.langsmith("CH02-Prompt")
+os.environ["LANGCHAIN_PROJECT"] = "CH02-Prompt"
 
 llm = ChatGoogleGenerativeAI (
     model="gemini-2.5-flash",
