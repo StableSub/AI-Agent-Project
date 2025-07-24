@@ -10,7 +10,7 @@ os.environ["LANGCHAIN_PROJECT"] = "CH01-Basic"
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash", 
     temperature=0.4, 
-    google_api_key=os.getenv("GOOGLE_API_KEY")
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
 prompt = PromptTemplate.from_template("{topic}에 대하여 3문장으로 설명해줘.")

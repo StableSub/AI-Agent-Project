@@ -11,7 +11,7 @@ os.environ["LANGCHAIN_PROJECT"] = "CH01-Basic"
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash", 
     temperature=0.4, 
-    google_api_key=os.getenv("GOOGLE_API_KEY")
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
 # 템플릿을 만들어서 프롬프트에 적용

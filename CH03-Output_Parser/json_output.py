@@ -11,7 +11,7 @@ os.environ["LANGCHAIN_PROJECT"] = "CH03-OutputParser"
 llm = GoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.4,
-    google_api_key=os.getenv("GOOGLE_API_KEY")
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
 class Topic(BaseModel):

@@ -17,7 +17,7 @@ def cli():
 llm = GoogleGenerativeAI(
     model = "gemini-2.5-flash",
     temperature=0.4,
-    google_api_key=os.getenv("GOOGLE_API_KEY"),
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
 email_conversation = """From: 김철수 (chulsoo.kim@bikecorporation.me)
