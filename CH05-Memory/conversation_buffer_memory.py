@@ -5,7 +5,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 
 load_dotenv()
-os.environ["LANGCHAIN_PROJECT"] = "CH03-OutputParser"
+os.environ["LANGCHAIN_PROJECT"] = "CH05-Memory"
 
 llm = GoogleGenerativeAI(
     model="gemini-2.5-flash",
