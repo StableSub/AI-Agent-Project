@@ -1,15 +1,19 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.prompts import base
-from pydantic import BaseModel
+from typing import List, Optional 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, root_mean_squared_error
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 mcp = FastMCP("DataAnalysis")
 
-@mcp.tool()
-def test() -> dict:
-    return {"ok": True, "message": "pong"}
-
 @mcp.prompt()
-def default_prompt(message: str) -> list[base.Message]:
+def default_prompt(message) -> list[base.Message]:
     return [
         base.AssistantMessage(
             "You are a helpful data analysis assistant. \n"
