@@ -1,4 +1,4 @@
-import os, sys, asyncio, hashlib, tempfile
+import os, sys, asyncio, hashlib, tempfile, time
 import streamlit as st
 
 from llm_model import load_model
@@ -11,16 +11,13 @@ from langchain.tools.retriever import create_retriever_tool
 import pandas as pd
 
 from RAG import rag_test
-from EDA import run_eda
+from EDA import *
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 st.set_page_config(page_title="Sub's Agent", page_icon="😀")
-st.title("My_Little_LLM")
-st.caption("랭체인 및 스트림릿 테스트")
-
-with st.sidebar:
-    "[깃허브](https://github.com/StableSub)"
+st.title("My Little AI Agent")
+st.caption("AI Agent Prototype")
 
 LLM = load_model.load_llm()
 
@@ -29,20 +26,11 @@ SERVER_PARAMS = StdioServerParameters(
     args=["-u", os.path.abspath("MCP/server.py")],
 )
 
-# 업로드 된 파일의 바이트 데이터를 해시로 계산.
-# 같은 파일이 여러 번 업로드 되어도 중복 인덱싱을 방지.
-def file_md5(uploaded_file) -> str | None:
-    if not uploaded_file:
-        return None
-    return hashlib.md5(uploaded_file.getvalue()).hexdigest()
-
 # Streamlit의 세션 상태 초기화.
 # 사용자와 LLM 간의 대화 내용, 업로드 파일 예시 및 retriever 객체 등을 초기값으로 설정.
 def init_state():
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": "파일 업로드 후 질문해 보세요!"}]
-    if "file_hash" not in st.session_state:
-        st.session_state.file_hash = None
     if "retriever" not in st.session_state:
         st.session_state.retriever = None
     if "agent_tool_count" not in st.session_state:
@@ -50,25 +38,72 @@ def init_state():
 
 init_state()
 
-uploaded_file = st.file_uploader("파일 업로드", type=("pdf", "csv", "xlsx", "json",))
-if uploaded_file:
-    message = f"{uploaded_file.name}에 대해 질문 해보세요"
-    st.session_state.messages = [{"role": "assistant", "content": message}]
-new_hash = file_md5(uploaded_file)
+with st.sidebar:
+    st.markdown("### 옵션")
+    sample_rows = st.number_input("샘플 로딩 행 수", min_value=10, max_value=2000, value = 100, step=10)
 
-# 업로드된 파일이 이전에 없던 파일이라면 조건문 진입.
-if uploaded_file and new_hash != st.session_state.file_hash:
-    st.info("새 파일 감지 → 인덱싱 중...")
-    st.session_state.retriever = rag_test(uploaded_file, LLM) # RAG용 retriever 객체 생성.
-    st.session_state.file_hash = new_hash
-    suffix = "." + uploaded_file.name.split(".")[-1].lower() # 업로드된 문서의 확장자 추출.
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp: # 업로드된 파일을 임시 경로로 저장.
-        tmp.write(uploaded_file.getvalue())
-        tmp_path = tmp.name
-        st.session_state["uploaded_path"] = tmp_path
-        st.success(f"파일 저장 완료: {tmp_path}")
-    df = pd.read_csv(tmp_path)
-    run_eda(df)
+uploaded_file = st.file_uploader("파일을 업로드하세요", type=list({"csv", "tsv", "txt"}))
+
+if uploaded_file:
+    dsid, raw_path, ext = save_upload_to_disk(uploaded_file)
+    st.success(f"저장 완료 - dataset_id: {dsid} 경로: {raw_path}")
+    
+    try:
+        sniff_info = sniff_file(
+            raw_path=raw_path,
+            ext=ext,
+            user_delimiter=None
+        )
+    except Exception as e:
+        st.error(f"스니핑 오류: {e}")
+        st.stop()
+        
+    with st.spinner("샘플 로딩 중..."):
+        try:
+            df, sample_info = sample_load(raw_path=raw_path, sniff_info=sniff_info, sample_rows=int(sample_rows))
+        except Exception as e:
+            write_meta(dsid, {"sniff": sniff_info, "error": str(e)})
+            st.error(f"로드 오류: {e}")
+            st.stop()
+    meta = {
+        "sniff": sniff_info,
+        "shape_sample": list(df.shape),
+        "shape_total": sample_info.get("shape_total"),
+        "columns": list(df.columns),
+        "ext": ext,
+        "raw_path": str(raw_path),
+    }
+    write_meta(dsid, meta)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    n_rows = (meta["shape_total"][0] if meta.get("shape_total") and meta["shape_total"][0] is not None else meta["shape_total"][0])
+    n_cols = (meta["shape_total"][1] if meta.get("shape_total") and meta["shape_total"][1] is not None else meta["shape_total"][1])
+    c1.metric("dataset_id", dsid)
+    c2.metric("행 수(추정)", f"{n_rows:,}")
+    c3.metric("열 수", f"{n_cols:,}")
+    c4.metric("파일 유형", sniff_info["filetype"])
+    
+    with st.expander("스니핑 결과 보기", expanded=False):
+        st.json(sniff_info)
+    
+    st.subheader("미리보기 (head 20)")
+    st.dataframe(df.head(20), use_container_width=True)
+    
+    st.subheader("컬럽/타입 요약")
+    dtype_df = pd.DataFrame({"column": df.columns, "dtype": df.dtypes.astype(str)})
+    st.dataframe(dtype_df, use_container_width=True)
+    
+    with st.expander("기본 통계 (describe, numeric)", expanded=False):
+        num_df = df.select_dtypes(include="number")
+        if not num_df.empty:
+            st.dataframe(num_df.describe().T, use_container_width=True)
+        else:
+            st.info("수치형 컬럼이 없습니다.")
+
+    st.caption(f"메타 저장 위치: `{META_DIR / f'{dsid}.json'}`")
+    
+else:
+    st.info("좌측 또는 위의 업로더로 CSV/Excel/Parquet 파일을 올리세요. 업로드하면 자동으로 미리보기를 생성합니다.")
 
 # 여태까지 저장된 메세지 출력.
 for m in st.session_state.messages:

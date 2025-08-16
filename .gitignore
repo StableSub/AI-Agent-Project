@@ -12,6 +12,7 @@
 .venv/
 .env
 
+data/
 __pycache__/
 vector_db/
 langgraph-mcp-dataanalysis
