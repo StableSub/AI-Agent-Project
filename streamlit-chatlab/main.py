@@ -10,8 +10,20 @@ from langgraph.prebuilt import create_react_agent
 from langchain.tools.retriever import create_retriever_tool
 import pandas as pd
 
-from RAG import rag_test
-from EDA import *
+from rag_processsing import *
+from data_processing import *
+
+target_dir1 = "/Users/anjeongseob/Desktop/Storage/Python/AI-Agent/streamlit-chatlab/data/meta"
+target_dir2 = "/Users/anjeongseob/Desktop/Storage/Python/AI-Agent/streamlit-chatlab/data/uploads"
+
+for target_dir in [target_dir1, target_dir2]:
+    for file in os.listdir(target_dir):
+        file_path = os.path.join(target_dir, file)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+        elif os.path.isdir(file_path):
+            import shutil
+            shutil.rmtree(file_path)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -30,11 +42,13 @@ SERVER_PARAMS = StdioServerParameters(
 # 사용자와 LLM 간의 대화 내용, 업로드 파일 예시 및 retriever 객체 등을 초기값으로 설정.
 def init_state():
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "파일 업로드 후 질문해 보세요!"}]
+        st.session_state.messages = [{"role": "assistant", "content": "질문해 보세요!"}]
     if "retriever" not in st.session_state:
         st.session_state.retriever = None
     if "agent_tool_count" not in st.session_state:
         st.session_state.agent_tool_count = 0
+    if "uploaded_file" not in st.session_state:
+        st.session_state.uploaded_file = None
 
 init_state()
 
@@ -45,63 +59,88 @@ with st.sidebar:
 uploaded_file = st.file_uploader("파일을 업로드하세요", type=list({"csv", "tsv", "txt"}))
 
 if uploaded_file:
-    dsid, raw_path, ext = save_upload_to_disk(uploaded_file)
-    st.success(f"저장 완료 - dataset_id: {dsid} 경로: {raw_path}")
-    
-    try:
-        sniff_info = sniff_file(
-            raw_path=raw_path,
-            ext=ext,
-            user_delimiter=None
-        )
-    except Exception as e:
-        st.error(f"스니핑 오류: {e}")
-        st.stop()
+    file_bytes = uploaded_file.getvalue()
+    file_hash = hashlib.md5(file_bytes).hexdigest()
+
+    if st.session_state.get("file_hash") != file_hash:
+        dsid, raw_path, ext = save_upload_to_disk(uploaded_file)
+                
+        st.session_state["file_hash"] = file_hash
+        st.session_state["dsid"] = dsid
+        st.session_state["raw_path"] = str(raw_path)
+        st.session_state["ext"] = ext
         
-    with st.spinner("샘플 로딩 중..."):
+        st.success(f"저장 완료 - dataset_id: {dsid} 경로: {raw_path}")
+        
         try:
-            df, sample_info = sample_load(raw_path=raw_path, sniff_info=sniff_info, sample_rows=int(sample_rows))
+            sniff_info = sniff_file(
+                raw_path=raw_path,
+                ext=ext
+            )
         except Exception as e:
-            write_meta(dsid, {"sniff": sniff_info, "error": str(e)})
-            st.error(f"로드 오류: {e}")
+            st.error(f"스니핑 오류: {e}")
             st.stop()
-    meta = {
-        "sniff": sniff_info,
-        "shape_sample": list(df.shape),
-        "shape_total": sample_info.get("shape_total"),
-        "columns": list(df.columns),
-        "ext": ext,
-        "raw_path": str(raw_path),
-    }
-    write_meta(dsid, meta)
+            
+        with st.spinner("샘플 로딩 중..."):
+            try:
+                df, sample_info = sample_load(raw_path=raw_path, sniff_info=sniff_info, sample_rows=int(sample_rows))
+            except Exception as e:
+                write_meta(dsid, {"sniff": sniff_info, "error": str(e)})
+                st.error(f"로드 오류: {e}")
+                st.stop()
+        meta = {
+            "sniff": sniff_info,
+            "shape_sample": list(df.shape),
+            "shape_total": sample_info.get("shape_total"),
+            "columns": list(df.columns),
+            "ext": ext,
+            "raw_path": str(raw_path),
+        }
+        write_meta(dsid, meta)
+        
+        st.session_state["meta"] = meta
+        st.session_state["preview_df"] = df.head(20)
+        st.session_state["dtype_df"] = pd.DataFrame({
+            "column": df.columns,
+            "null_count": df.isnull().sum().values,
+            "null_ratio": (df.isnull().mean() * 100).round(2).values,
+            "dtype": df.dtypes.astype(str).values,
+        })
+            
+    meta = st.session_state["meta"]
+    df_preview = st.session_state["preview_df"]
+    dtype_df = st.session_state["dtype_df"]
     
     c1, c2, c3, c4 = st.columns(4)
-    n_rows = (meta["shape_total"][0] if meta.get("shape_total") and meta["shape_total"][0] is not None else meta["shape_total"][0])
-    n_cols = (meta["shape_total"][1] if meta.get("shape_total") and meta["shape_total"][1] is not None else meta["shape_total"][1])
-    c1.metric("dataset_id", dsid)
+    n_rows, n_cols = meta["shape_total"]
     c2.metric("행 수(추정)", f"{n_rows:,}")
     c3.metric("열 수", f"{n_cols:,}")
-    c4.metric("파일 유형", sniff_info["filetype"])
+    c4.metric("파일 유형", meta["sniff"]["filetype"])
     
     with st.expander("스니핑 결과 보기", expanded=False):
-        st.json(sniff_info)
+        st.json(meta["sniff"])
     
     st.subheader("미리보기 (head 20)")
-    st.dataframe(df.head(20), use_container_width=True)
-    
+    st.dataframe(df_preview, use_container_width=True)
+        
     st.subheader("컬럽/타입 요약")
-    dtype_df = pd.DataFrame({"column": df.columns, "dtype": df.dtypes.astype(str)})
     st.dataframe(dtype_df, use_container_width=True)
     
     with st.expander("기본 통계 (describe, numeric)", expanded=False):
-        num_df = df.select_dtypes(include="number")
+        num_df = dtype_df.select_dtypes(include="number")
         if not num_df.empty:
             st.dataframe(num_df.describe().T, use_container_width=True)
         else:
             st.info("수치형 컬럼이 없습니다.")
-
-    st.caption(f"메타 저장 위치: `{META_DIR / f'{dsid}.json'}`")
+            
+    dsid = st.session_state["dsid"]
+    st.caption(f"메타 저장 위치: '{META_DIR / f'{dsid}.json'}'")
     
+    if "retriever" not in st.session_state or st.session_state.retriever is None:
+        retriever_info = st.info("Retriever 생성 중...")
+        st.session_state.retriever = build_retriever_from_csv(uploaded_file)
+        retriever_info.empty()
+        
 else:
     st.info("좌측 또는 위의 업로더로 CSV/Excel/Parquet 파일을 올리세요. 업로드하면 자동으로 미리보기를 생성합니다.")
 
@@ -133,9 +172,7 @@ async def run(user_input: str):
                     ),
                 )
                 tools.append(retriever_tool)
-                if st.session_state.retriever:
-                    st.success("retriever 생성 완료")
-                else:
+                if not st.session_state.retriever:
                     st.warning("retriever 생성 실패")
 
             # LLM이 자유롭게 툴을 선택.
@@ -154,12 +191,9 @@ if user_input := st.chat_input("Say something"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content" : user_input})
     with st.chat_message("assistant"):
-        thinking_msg = st.empty()
-        thinking_msg.markdown("💭 생각 중입니다...")
         try:
             answer = asyncio.run(run(user_input))
         except Exception as e:
             answer = f"에러가 발생했습니다: {e}"
-        thinking_msg.empty()
         st.markdown(answer)
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.session_state.messages.append({"role": "assistant", "content": answer})

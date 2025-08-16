@@ -57,7 +57,7 @@ def detect_delimiter(text_sample: str) -> str:
     
 # 저장된 파일의 경로, 확장자, 사용자 힌트를 종합해, 로더가 필요로 하는 최소 힌트(filetype, encoding, delimiter, ext)를 만듬.
 # CSV, 엑셀, 파케 등 파일 탙입마다 다른 결정 포인트를 표준화해 반환.
-def sniff_file(raw_path: Path, ext: str, user_delimiter: str | None):
+def sniff_file(raw_path: Path, ext: str):
     ext = (ext or "").lower() # ext를 소문자 문자열로 정규화.
     if ext not in SUPPORTED: # 만약 지원하지 않는 타입일 시 에러 반환.
         raise ValueError(f"UNSUPPORTED_FILE_TYPE: .{ext}")
@@ -67,19 +67,17 @@ def sniff_file(raw_path: Path, ext: str, user_delimiter: str | None):
         info["filetype"] = "csv"
         enc = detect_encoding(raw_path) # 텍스트를 읽기 위해 먼저 인코딩을 추정해 기록.
         info["encoding"] = enc
-        if user_delimiter: # 사용자가 구분자를 적용한 경우 무조건 적용.
-            info["delimiter"] = user_delimiter
-        else: # 그렇지 않으면 앞 50k정도만 읽어 구분자 추정용 샘플을 만듬.
-            with open(raw_path, "rb") as f:
-                head = f.read(50_000)
-            try: # 먼저 추정한 인코딩으로 디코드 하고, 실패 시 utf-8로 재시도.
-                sample = head.decode(enc, errors="ignore")
-            except Exception:
-                sample = head.decode("utf-8", errors="ignore")
-            delim = detect_delimiter(sample)
-            if ext == "tsv": # 확장자가 tsv면 무조건 탭으로 보정.
-                delim = "\t"
-            info["delimiter"] = delim # 최종 구분자를 info에 기록.
+        #앞 50k정도만 읽어 구분자 추정용 샘플을 만듬.
+        with open(raw_path, "rb") as f:
+            head = f.read(50_000)
+        try: # 먼저 추정한 인코딩으로 디코드 하고, 실패 시 utf-8로 재시도.
+            sample = head.decode(enc, errors="ignore")
+        except Exception:
+            sample = head.decode("utf-8", errors="ignore")
+        delim = detect_delimiter(sample)
+        if ext == "tsv": # 확장자가 tsv면 무조건 탭으로 보정.
+            delim = "\t"
+        info["delimiter"] = delim # 최종 구분자를 info에 기록.
     return info
 
 
@@ -89,7 +87,7 @@ def count_rows_csv(path: Path, enc: str, sep: str | None) -> int:
      # CSV를 100,000행 단위로 끊어서 읽고, 읽을 때마다 행 개수를 누적.
      # dftype=object: 행 변환 문제를 피하기 위해 문자열로 읽음.
      # on_bad_line="skip": 깨진 줄은 무시.
-    for chunk in pd.read_csv(path, sep=sep, engine="python", encoding=enc, chunksize=100_1000, dtype=object, on_bad_lines="skip"):
+    for chunk in pd.read_csv(path, sep=sep, engine="python", encoding=enc, chunksize=100_100, dtype=object, on_bad_lines="skip"):
         total += len(chunk)
     return total
 
@@ -114,3 +112,4 @@ def write_meta(dataset_id: str, meta: dict):
     p = META_DIR / f"{dataset_id}.json" # 저장 경로를 data/meta/{dataset_id}.json으로 설정.
     with open(p, "w", encoding="utf-8") as f: # JSON으로 기록. 한글 및 비ASCII 깨지지 않게 ensure_ascii=False로 설정.
         json.dump(meta, f, ensure_ascii=False, indent=2)
+        
